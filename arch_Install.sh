@@ -23,22 +23,27 @@ select_option() {
   done
 }
 
-echo "=== Arch Linux Btrfs Zsh Installer v9 ==="
+echo "=== Arch Linux Btrfs Zsh Installer v10 ==="
 
 # === User input ===
 prompt "Hostname" hostname
 prompt "Username" username
 
-echo ""  # fixes invisible disk list issue
+echo ""
 
-# === Disk detection ===
-disks=()
-while IFS= read -r line; do
-  disks+=("$line")
-done < <(lsblk -dpno NAME | grep -E "^/dev/(sd|hd|vd|nvme|mmcblk)" || true)
+# === Disk detection (stable with mapfile) ===
+mapfile -t disks < <(lsblk -dpno NAME | grep -E "^/dev/(sd|hd|vd|nvme|mmcblk)")
+
+# Debug output (very important!)
+echo "🔍 Disks detected:"
+for d in "${disks[@]}"; do
+  echo "→ $d"
+done
+echo "Total disks: ${#disks[@]}"
 
 if [[ ${#disks[@]} -eq 0 ]]; then
-  echo "❌ No disks found. Aborting."
+  echo "❌ No disks found. Check output of 'lsblk -dpno NAME'"
+  lsblk -dpno NAME
   exit 1
 fi
 
@@ -48,11 +53,7 @@ disk=$(select_option "Select target disk (ALL DATA WILL BE ERASED!)" "${disks[@]
 mapfile -t regions < <(find /usr/share/zoneinfo -mindepth 1 -maxdepth 1 -type d | xargs -n1 basename)
 region=$(select_option "Select timezone region" "${regions[@]}")
 
-cities=()
-while IFS= read -r -d '' city; do
-  cities+=("$(basename "$city")")
-done < <(find "/usr/share/zoneinfo/$region" -mindepth 1 -maxdepth 1 -type f -print0)
-
+mapfile -t cities < <(find "/usr/share/zoneinfo/$region" -mindepth 1 -maxdepth 1 -type f -printf "%f\n")
 city=$(select_option "Select city in $region" "${cities[@]}")
 timezone="$region/$city"
 
