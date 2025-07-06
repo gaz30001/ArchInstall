@@ -1,39 +1,54 @@
 #!/bin/bash
 set -e
 
-# === Функции ===
+# === Functions ===
 prompt() { read -rp "$1: " "$2"; }
 
 select_option() {
   echo -e "\n$1"
-  select opt in "${@:2}"; do
-    [[ -n $opt ]] && echo "$opt" && return
+  local i=1
+  local options=("${@:2}")
+  for opt in "${options[@]}"; do
+    printf "%2d) %s\n" "$i" "$opt"
+    ((i++))
+  done
+  local choice
+  while true; do
+    read -rp "? " choice
+    if [[ "$choice" =~ ^[0-9]+$ ]] && ((choice >= 1 && choice <= ${#options[@]})); then
+      echo "${options[$((choice - 1))]}"
+      return
+    fi
+    echo "Invalid option. Enter a number between 1 and ${#options[@]}"
   done
 }
 
-# === Ввод ===
-echo "=== Arch Linux Btrfs Zsh Installer v5 ==="
-prompt "Имя хоста" hostname
-prompt "Имя пользователя" username
+# === Input ===
+echo "=== Arch Linux Btrfs Zsh Installer v6 ==="
+prompt "Hostname" hostname
+prompt "Username" username
 
-disks=(/dev/sd[a-z] /dev/nvme[0-9]n1)
-disk=$(select_option "Выберите диск (ВСЕ ДАННЫЕ БУДУТ УДАЛЕНЫ!)" "${disks[@]}")
+# Reliable disk list
+mapfile -t disks < <(lsblk -dpno NAME,TYPE | grep disk | awk '{print $1}')
+disk=$(select_option "Select target disk (ALL DATA WILL BE ERASED!)" "${disks[@]}")
 
-regions=($(ls /usr/share/zoneinfo))
-region=$(select_option "Выберите регион" "${regions[@]}")
+# Region / City (Timezone)
+mapfile -t regions < <(find /usr/share/zoneinfo -mindepth 1 -maxdepth 1 -type d | xargs -n1 basename)
+region=$(select_option "Select timezone region" "${regions[@]}")
 
-# Надёжный выбор города
 cities=()
 while IFS= read -r -d '' city; do
   cities+=("$(basename "$city")")
 done < <(find "/usr/share/zoneinfo/$region" -mindepth 1 -maxdepth 1 -type f -print0)
-city=$(select_option "Выберите город" "${cities[@]}")
+
+city=$(select_option "Select city in $region" "${cities[@]}")
 timezone="$region/$city"
 
+# Locale
 locales=(en_US.UTF-8 ru_RU.UTF-8 de_DE.UTF-8)
-locale=$(select_option "Выберите локаль" "${locales[@]}")
+locale=$(select_option "Select system locale" "${locales[@]}")
 
-# === Определение UEFI/BIOS ===
+# === Detect BIOS or UEFI ===
 if [ -d /sys/firmware/efi ]; then
   bootmode="UEFI"
   scheme="gpt"
@@ -41,9 +56,9 @@ else
   bootmode="BIOS"
   scheme="mbr"
 fi
-echo "Обнаружен режим загрузки: $bootmode ($scheme)"
+echo "Detected boot mode: $bootmode ($scheme)"
 
-# === Разметка ===
+# === Disk partitioning ===
 wipefs -af "$disk"
 sgdisk --zap-all "$disk" 2>/dev/null || true
 
@@ -63,7 +78,7 @@ else
   root="${disk}2"
 fi
 
-# === Форматирование и подтомы ===
+# === Format and mount ===
 mkfs.fat -F32 "$boot"
 mkfs.btrfs -f "$root"
 
@@ -81,12 +96,12 @@ mount -o noatime,compress=zstd:2,ssd,discard=async,space_cache=v2,subvol=@snapsh
 mount -o noatime,compress=zstd:2,ssd,discard=async,space_cache=v2,subvol=@var_log "$root" /mnt/var/log
 mount "$boot" /mnt/boot
 
-# === Установка ===
+# === Base system install ===
 pacstrap /mnt base linux linux-firmware btrfs-progs sudo nano grub snapper snap-pac zsh git
 
 genfstab -U /mnt >> /mnt/etc/fstab
 
-# === Настройка в chroot ===
+# === Configure inside chroot ===
 arch-chroot /mnt /bin/bash <<EOF
 ln -sf /usr/share/zoneinfo/$timezone /etc/localtime
 hwclock --systohc
@@ -100,11 +115,11 @@ echo "127.0.0.1 localhost" >> /etc/hosts
 echo "::1       localhost" >> /etc/hosts
 echo "127.0.1.1 $hostname.localdomain $hostname" >> /etc/hosts
 
-echo "Введите пароль для root:"
+echo "Set password for root:"
 passwd
 
 useradd -m -G wheel -s /bin/zsh $username
-echo "Введите пароль для пользователя $username:"
+echo "Set password for user $username:"
 passwd $username
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
@@ -124,7 +139,7 @@ else
 fi
 grub-mkconfig -o /boot/grub/grub.cfg
 
-# === Zsh + плагины ===
+# === Zsh + plugins ===
 git clone https://github.com/zsh-users/zsh-autosuggestions /usr/share/zsh/plugins/zsh-autosuggestions
 git clone https://github.com/zsh-users/zsh-syntax-highlighting /usr/share/zsh/plugins/zsh-syntax-highlighting
 
@@ -141,5 +156,4 @@ chsh -s /bin/zsh root
 chsh -s /bin/zsh $username
 EOF
 
-# === Финал ===
-echo -e "\n✅ Установка завершена! Перезагрузись и заходи в новый Arch с Btrfs, Snapper и Zsh 🚀"
+echo -e "\n✅ Installation complete! Reboot and enjoy your new Arch Linux with Btrfs, Snapper, and Zsh 🚀"
