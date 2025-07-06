@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# === Вспомогательные функции ===
+# === Функции ===
 prompt() { read -rp "$1: " "$2"; }
 
 select_option() {
@@ -11,8 +11,8 @@ select_option() {
   done
 }
 
-# === Ввод данных ===
-echo "=== Arch Linux Btrfs Zsh Installer ==="
+# === Ввод ===
+echo "=== Arch Linux Btrfs Zsh Installer v5 ==="
 prompt "Имя хоста" hostname
 prompt "Имя пользователя" username
 
@@ -21,14 +21,19 @@ disk=$(select_option "Выберите диск (ВСЕ ДАННЫЕ БУДУТ 
 
 regions=($(ls /usr/share/zoneinfo))
 region=$(select_option "Выберите регион" "${regions[@]}")
-cities=($(ls "/usr/share/zoneinfo/$region"))
+
+# Надёжный выбор города
+cities=()
+while IFS= read -r -d '' city; do
+  cities+=("$(basename "$city")")
+done < <(find "/usr/share/zoneinfo/$region" -mindepth 1 -maxdepth 1 -type f -print0)
 city=$(select_option "Выберите город" "${cities[@]}")
 timezone="$region/$city"
 
 locales=(en_US.UTF-8 ru_RU.UTF-8 de_DE.UTF-8)
 locale=$(select_option "Выберите локаль" "${locales[@]}")
 
-# === Определение BIOS/UEFI ===
+# === Определение UEFI/BIOS ===
 if [ -d /sys/firmware/efi ]; then
   bootmode="UEFI"
   scheme="gpt"
@@ -36,11 +41,9 @@ else
   bootmode="BIOS"
   scheme="mbr"
 fi
-
 echo "Обнаружен режим загрузки: $bootmode ($scheme)"
 
 # === Разметка ===
-echo "Разметка диска $disk..."
 wipefs -af "$disk"
 sgdisk --zap-all "$disk" 2>/dev/null || true
 
@@ -78,35 +81,30 @@ mount -o noatime,compress=zstd:2,ssd,discard=async,space_cache=v2,subvol=@snapsh
 mount -o noatime,compress=zstd:2,ssd,discard=async,space_cache=v2,subvol=@var_log "$root" /mnt/var/log
 mount "$boot" /mnt/boot
 
-# === Установка системы ===
+# === Установка ===
 pacstrap /mnt base linux linux-firmware btrfs-progs sudo nano grub snapper snap-pac zsh git
 
 genfstab -U /mnt >> /mnt/etc/fstab
 
 # === Настройка в chroot ===
 arch-chroot /mnt /bin/bash <<EOF
-# Часовой пояс и часы
 ln -sf /usr/share/zoneinfo/$timezone /etc/localtime
 hwclock --systohc
 
-# Локаль
 echo "$locale UTF-8" >> /etc/locale.gen
 locale-gen
 echo "LANG=$locale" > /etc/locale.conf
 
-# Hostname
 echo "$hostname" > /etc/hostname
 echo "127.0.0.1 localhost" >> /etc/hosts
 echo "::1       localhost" >> /etc/hosts
 echo "127.0.1.1 $hostname.localdomain $hostname" >> /etc/hosts
 
-# Root пароль
-echo "Установите пароль для root:"
+echo "Введите пароль для root:"
 passwd
 
-# Пользователь
 useradd -m -G wheel -s /bin/zsh $username
-echo "Установите пароль для пользователя $username:"
+echo "Введите пароль для пользователя $username:"
 passwd $username
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
@@ -136,14 +134,12 @@ source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
 source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 ZRC
 
-cp /etc/zshrc /root/.zshrc
 cp /etc/zshrc /home/$username/.zshrc
+cp /etc/zshrc /root/.zshrc
 chown $username:$username /home/$username/.zshrc
-
 chsh -s /bin/zsh root
 chsh -s /bin/zsh $username
 EOF
 
-# === Готово ===
-echo -e "\n✅ Установка завершена! Zsh + Snapshots готовы к работе!"
-echo "Перезагрузись и наслаждайся Arch Linux с btrfs и автоснапшотами 🚀"
+# === Финал ===
+echo -e "\n✅ Установка завершена! Перезагрузись и заходи в новый Arch с Btrfs, Snapper и Zsh 🚀"
