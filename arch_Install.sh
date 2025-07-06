@@ -23,13 +23,15 @@ select_option() {
   done
 }
 
-echo "=== Arch Linux Btrfs Zsh Installer v8 ==="
+echo "=== Arch Linux Btrfs Zsh Installer v9 ==="
 
 # === User input ===
 prompt "Hostname" hostname
 prompt "Username" username
 
-# === Disk detection (more reliable) ===
+echo ""  # fixes invisible disk list issue
+
+# === Disk detection ===
 disks=()
 while IFS= read -r line; do
   disks+=("$line")
