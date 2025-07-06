@@ -23,18 +23,17 @@ select_option() {
   done
 }
 
-# === Header ===
-echo "=== Arch Linux Btrfs Zsh Installer v7 ==="
+echo "=== Arch Linux Btrfs Zsh Installer v8 ==="
 
 # === User input ===
 prompt "Hostname" hostname
 prompt "Username" username
 
-# === Disk detection ===
+# === Disk detection (more reliable) ===
 disks=()
 while IFS= read -r line; do
   disks+=("$line")
-done < <(lsblk -dnpo NAME,TYPE | awk '$2 == "disk" { print $1 }')
+done < <(lsblk -dpno NAME | grep -E "^/dev/(sd|hd|vd|nvme|mmcblk)" || true)
 
 if [[ ${#disks[@]} -eq 0 ]]; then
   echo "❌ No disks found. Aborting."
@@ -43,7 +42,7 @@ fi
 
 disk=$(select_option "Select target disk (ALL DATA WILL BE ERASED!)" "${disks[@]}")
 
-# === Timezone ===
+# === Timezone selection ===
 mapfile -t regions < <(find /usr/share/zoneinfo -mindepth 1 -maxdepth 1 -type d | xargs -n1 basename)
 region=$(select_option "Select timezone region" "${regions[@]}")
 
@@ -55,11 +54,11 @@ done < <(find "/usr/share/zoneinfo/$region" -mindepth 1 -maxdepth 1 -type f -pri
 city=$(select_option "Select city in $region" "${cities[@]}")
 timezone="$region/$city"
 
-# === Locale ===
+# === Locale selection ===
 locales=(en_US.UTF-8 ru_RU.UTF-8 de_DE.UTF-8)
 locale=$(select_option "Select system locale" "${locales[@]}")
 
-# === Boot mode detection ===
+# === Detect boot mode ===
 if [ -d /sys/firmware/efi ]; then
   bootmode="UEFI"
   scheme="gpt"
@@ -69,7 +68,7 @@ else
 fi
 echo "Detected boot mode: $bootmode ($scheme)"
 
-# === Disk setup ===
+# === Partition disk ===
 wipefs -af "$disk"
 sgdisk --zap-all "$disk" 2>/dev/null || true
 
@@ -107,12 +106,12 @@ mount -o noatime,compress=zstd:2,ssd,discard=async,space_cache=v2,subvol=@snapsh
 mount -o noatime,compress=zstd:2,ssd,discard=async,space_cache=v2,subvol=@var_log "$root" /mnt/var/log
 mount "$boot" /mnt/boot
 
-# === Base system install ===
+# === Base installation ===
 pacstrap /mnt base linux linux-firmware btrfs-progs sudo nano grub snapper snap-pac zsh git
 
 genfstab -U /mnt >> /mnt/etc/fstab
 
-# === Configuration in chroot ===
+# === Configure system ===
 arch-chroot /mnt /bin/bash <<EOF
 ln -sf /usr/share/zoneinfo/$timezone /etc/localtime
 hwclock --systohc
@@ -134,7 +133,6 @@ echo "Set password for user $username:"
 passwd $username
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
-# === Snapper config ===
 snapper --config root create-config /
 sed -i 's/^ALLOW_GROUPS=""/ALLOW_GROUPS="wheel"/' /etc/snapper/configs/root
 mkdir -p /.snapshots
@@ -142,7 +140,6 @@ chmod 750 /.snapshots
 systemctl enable snapper-timeline.timer
 systemctl enable snapper-cleanup.timer
 
-# === GRUB ===
 if [ "$bootmode" == "UEFI" ]; then
   grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
 else
@@ -150,7 +147,6 @@ else
 fi
 grub-mkconfig -o /boot/grub/grub.cfg
 
-# === Zsh plugins ===
 git clone https://github.com/zsh-users/zsh-autosuggestions /usr/share/zsh/plugins/zsh-autosuggestions
 git clone https://github.com/zsh-users/zsh-syntax-highlighting /usr/share/zsh/plugins/zsh-syntax-highlighting
 
@@ -167,5 +163,4 @@ chsh -s /bin/zsh root
 chsh -s /bin/zsh $username
 EOF
 
-# === Final ===
 echo -e "\n✅ Installation complete! Reboot and enjoy your new Arch Linux with Btrfs, Snapper, and Zsh 🚀"
