@@ -158,7 +158,7 @@ if [ -n "$PART_EFI" ]; then mount $PART_EFI /mnt/boot; fi
 # 5. Установка базовой системы
 #------------------------------------------------------------------------------------
 echo -e "\n${GREEN}Установка базовых пакетов с ядром Zen (может занять время)...${RESET}"
-pacstrap -K /mnt base base-devel linux-zen linux-zen-headers linux-firmware btrfs-progs networkmanager nano git zsh grub sudo
+pacstrap -K /mnt base base-devel linux-zen linux-zen-headers linux-firmware btrfs-progs networkmanager nano git zsh grub sudo go
 
 # 6. Конфигурация системы
 #------------------------------------------------------------------------------------
