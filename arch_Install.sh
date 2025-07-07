@@ -13,9 +13,12 @@ function select_timezone() {
     mapfile -t REGIONS < <(timedatectl list-timezones | cut -d'/' -f1 | sort -u | grep -v -e '^$' -e '^Etc$')
     echo -e "\n${GREEN}--- Настройка временной зоны ---${RESET}"
     echo "Выберите ваш регион:"
-    for i in "${!REGIONS[@]}"; do
-        printf "%3d) %s\n" "$((i+1))" "${REGIONS[$i]}"
-    done
+    # Выводим пронумерованный список в несколько столбцов
+    (
+        for i in "${!REGIONS[@]}"; do
+            printf "%3d) %s\n" "$((i+1))" "${REGIONS[$i]}"
+        done
+    ) | column
 
     local region_choice
     while true; do
@@ -30,9 +33,12 @@ function select_timezone() {
 
     mapfile -t ZONES < <(timedatectl list-timezones | grep "^$SELECTED_REGION/")
     echo -e "\nВыберите ваш город/зону:"
-    for i in "${!ZONES[@]}"; do
-        printf "%3d) %s\n" "$((i+1))" "${ZONES[$i]}"
-    done
+    # Выводим второй список также в несколько столбцов
+    (
+        for i in "${!ZONES[@]}"; do
+            printf "%3d) %s\n" "$((i+1))" "${ZONES[$i]}"
+        done
+    ) | column
 
     local zone_choice
     while true; do
@@ -47,8 +53,9 @@ function select_timezone() {
     TIMEZONE="${ZONES[$((zone_choice-1))]}"
 }
 
+
 echo -e "${GREEN}### Интерактивный установщик Arch Linux с BTRFS и ZSH ###${RESET}"
-echo -e "${GREEN}### Версия с ядром Zen ###${RESET}"
+echo -e "${GREEN}### Версия с ядром Zen и выводом в столбцы ###${RESET}"
 echo -e "${RED}ВНИМАНИЕ: Этот скрипт сотрет все данные на выбранном диске!${RESET}"
 read -p "Вы уверены, что хотите продолжить? (y/N): " confirm
 if [[ "$confirm" != "y" ]]; then
@@ -151,7 +158,6 @@ if [ -n "$PART_EFI" ]; then mount $PART_EFI /mnt/boot; fi
 # 5. Установка базовой системы
 #------------------------------------------------------------------------------------
 echo -e "\n${GREEN}Установка базовых пакетов с ядром Zen (может занять время)...${RESET}"
-# Заменяем 'linux' на 'linux-zen' и 'linux-zen-headers'
 pacstrap -K /mnt base base-devel linux-zen linux-zen-headers linux-firmware btrfs-progs networkmanager nano git zsh grub sudo
 
 # 6. Конфигурация системы
@@ -184,7 +190,6 @@ if [ -d "/sys/firmware/efi/efivars" ]; then
     bootctl --path=/boot install
     ROOT_UUID=\$(blkid -s UUID -o value $PART_ROOT)
     echo "default arch-zen.conf" > /boot/loader/loader.conf
-    # Обновляем пути к ядру Zen для systemd-boot
     {
         echo "title   Arch Linux (Zen Kernel)"
         echo "linux   /vmlinuz-linux-zen"
@@ -193,7 +198,6 @@ if [ -d "/sys/firmware/efi/efivars" ]; then
     } > /boot/loader/entries/arch-zen.conf
 else
     echo "Установка GRUB (BIOS)..."
-    # grub-mkconfig сам найдет ядро Zen
     pacman -S --noconfirm os-prober
     grub-install --target=i386-pc $DISK
     grub-mkconfig -o /boot/grub/grub.cfg
@@ -217,7 +221,6 @@ sed -i 's/ZSH_THEME="robbyrussell"/ZSH_THEME="passion"/' ~/.zshrc
 sed -i 's/plugins=(git)/plugins=(git zsh-autosuggestions zsh-syntax-highlighting)/' ~/.zshrc
 ZSH_SETUP
 
-# --- Установка AUR-хелпера yay ---
 echo "Установка AUR-хелпера yay..."
 su - "$USERNAME" <<'YAY_INSTALL'
 cd /tmp
