@@ -32,15 +32,23 @@ setfont ter-132n || true
 
 # --- Функции ---
 
-# Функция для отображения опций в столбцах и получения выбора пользователя
+# ИСПРАВЛЕННАЯ функция для отображения опций и получения выбора
 choose_option() {
     local -n options=$1
     local prompt=$2
-    # Выводим пронумерованный список и форматируем его в столбцы
-    for i in "${!options[@]}"; do
-        printf "%3d) %s\n" "$((i+1))" "${options[$i]}"
-    done | column
+    local list_output
+
+    # Сначала генерируем и форматируем список в переменную
+    list_output=$(
+        for i in "${!options[@]}"; do
+            printf "%3d) %s\n" "$((i+1))" "${options[$i]}"
+        done | column
+    )
     
+    # Затем выводим готовый список на экран
+    echo "$list_output"
+
+    # И только потом запрашиваем ввод
     local choice
     while true; do
         read -p "$prompt" choice
