@@ -5,36 +5,32 @@ GREEN="\e[32m"
 RED="\e[31m"
 RESET="\e[0m"
 
-# Выбор локали
+# --- Выбор локали ---
 function select_locale() {
     echo -e "\n${GREEN}--- Выбор локали ---${RESET}"
     LOCALES=("en_US.UTF-8" "ru_RU.UTF-8" "de_DE.UTF-8" "fr_FR.UTF-8")
-
     for i in "${!LOCALES[@]}"; do
         printf "%2d) %s\n" $((i+1)) "${LOCALES[$i]}"
     done | column
-
     while true; do
         read -p "Введите номер локали: " locale_choice
         if [[ "$locale_choice" =~ ^[0-9]+$ ]] && [ "$locale_choice" -ge 1 ] && [ "$locale_choice" -le "${#LOCALES[@]}" ]; then
             SELECTED_LOCALE="${LOCALES[$((locale_choice-1))]}"
             break
         else
-            echo -e "${RED}Неверный ввод. Повторите попытку.${RESET}"
+            echo -e "${RED}Неверный ввод.${RESET}"
         fi
     done
     echo -e "Выбрана локаль: ${GREEN}$SELECTED_LOCALE${RESET}"
 }
 
-# Выбор временной зоны
+# --- Выбор часового пояса ---
 function select_timezone() {
     mapfile -t REGIONS < <(timedatectl list-timezones | cut -d'/' -f1 | sort -u | grep -v -e '^$' -e '^Etc$')
-    echo -e "\n${GREEN}--- Настройка временной зоны ---${RESET}"
-    echo "Выберите ваш регион:"
+    echo -e "\n${GREEN}--- Выбор региона ---${RESET}"
     for i in "${!REGIONS[@]}"; do
         printf "%3d) %s\n" "$((i+1))" "${REGIONS[$i]}"
     done | column
-
     while true; do
         read -p "Введите номер региона: " region_choice
         if [[ "$region_choice" =~ ^[0-9]+$ ]] && [ "$region_choice" -ge 1 ] && [ "$region_choice" -le "${#REGIONS[@]}" ]; then
@@ -44,15 +40,13 @@ function select_timezone() {
         fi
     done
     REGION="${REGIONS[$((region_choice-1))]}"
-
     mapfile -t ZONES < <(timedatectl list-timezones | grep "^$REGION/")
-    echo -e "\nВыберите город/зону:"
+    echo -e "\nВыберите зону:"
     for i in "${!ZONES[@]}"; do
         printf "%3d) %s\n" "$((i+1))" "${ZONES[$i]}"
     done | column
-
     while true; do
-        read -p "Введите номер города/зоны: " zone_choice
+        read -p "Введите номер зоны: " zone_choice
         if [[ "$zone_choice" =~ ^[0-9]+$ ]] && [ "$zone_choice" -ge 1 ] && [ "$zone_choice" -le "${#ZONES[@]}" ]; then
             break
         else
@@ -60,21 +54,45 @@ function select_timezone() {
         fi
     done
     TIMEZONE="${ZONES[$((zone_choice-1))]}"
+    echo -e "Выбрана временная зона: ${GREEN}$TIMEZONE${RESET}"
 }
 
-# === Приветствие
-echo -e "${GREEN}### Arch Linux Installer v11 with BTRFS, ZSH and Terminus ###${RESET}"
-read -p "Вы уверены, что хотите продолжить? (y/N): " confirm
+# --- Приветствие ---
+echo -e "${GREEN}=== Arch Linux Installer v12 ===${RESET}"
+echo -e "${RED}ВНИМАНИЕ: Все данные на выбранном диске будут удалены!${RESET}"
+read -p "Продолжить установку? (y/N): " confirm
 [[ "$confirm" != "y" ]] && exit 1
 
-# === Ввод данных
-lsblk -d -o NAME,SIZE,MODEL
-read -p "Введите имя диска (например, sda или nvme0n1): " DISK
-DISK="/dev/${DISK}"
+# --- Выбор диска ---
+echo -e "\n${GREEN}--- Доступные диски ---${RESET}"
+mapfile -t DISKS < <(lsblk -dpno NAME,SIZE | grep -E "^/dev/(sd|hd|vd|nvme|mmcblk)")
+for i in "${!DISKS[@]}"; do
+    printf "%2d) %s\n" $((i+1)) "${DISKS[$i]}"
+done
+while true; do
+    read -p "Выберите диск: " disk_choice
+    if [[ "$disk_choice" =~ ^[0-9]+$ ]] && ((disk_choice >= 1 && disk_choice <= ${#DISKS[@]})); then
+        DISK="${DISKS[$((disk_choice-1))]}"
+        break
+    else
+        echo -e "${RED}Неверный выбор.${RESET}"
+    fi
+done
 
-read -p "Таблица разделов (gpt/mbr) [gpt]: " PART_TABLE
-PART_TABLE=${PART_TABLE:-gpt}
+# --- Тип таблицы ---
+echo -e "\n${GREEN}--- Тип таблицы разделов ---${RESET}"
+echo " 1) GPT (UEFI)"
+echo " 2) MBR (BIOS)"
+while true; do
+    read -p "Выберите тип (1 или 2): " part_choice
+    case "$part_choice" in
+        1) PART_TABLE="gpt"; break ;;
+        2) PART_TABLE="mbr"; break ;;
+        *) echo -e "${RED}Ошибка: Введите 1 или 2.${RESET}" ;;
+    esac
+done
 
+# --- Имя хоста и пользователи ---
 read -p "Имя хоста [archlinux]: " HOSTNAME
 HOSTNAME=${HOSTNAME:-archlinux}
 
@@ -94,17 +112,17 @@ while true; do
     echo -e "${RED}Пароли не совпадают.${RESET}"
 done
 
+# --- Выбор локали и зоны ---
 select_locale
 select_timezone
 
-# === Подготовка
-umount -R /mnt 2>/dev/null || true
-sgdisk --zap-all "$DISK"
-
+# --- Проверка UEFI ---
 UEFI=false
 [ -d /sys/firmware/efi/efivars ] && UEFI=true
 
-# === Разметка
+# --- Разметка ---
+umount -R /mnt 2>/dev/null || true
+sgdisk --zap-all "$DISK" || true
 if $UEFI && [[ "$PART_TABLE" == "gpt" ]]; then
     sgdisk -n 1:0:+550M -t 1:ef00 "$DISK"
     sgdisk -n 2:0:0 -t 2:8300 "$DISK"
@@ -118,13 +136,12 @@ else
     PART_ROOT="${DISK}1"
 fi
 
-# === Форматирование и монтирование
-mkfs.btrfs -f -L ArchLinux "$PART_ROOT"
+# --- Форматирование и монтирование ---
+mkfs.btrfs -f "$PART_ROOT"
 mount "$PART_ROOT" /mnt
-btrfs subvolume create /mnt/@
-btrfs subvolume create /mnt/@home
-btrfs subvolume create /mnt/@snapshots
-btrfs subvolume create /mnt/@var_log
+for sub in @ @home @snapshots @var_log; do
+    btrfs subvolume create /mnt/$sub
+done
 umount /mnt
 
 OPTS="noatime,compress=zstd:2,ssd,discard=async,space_cache=v2"
@@ -135,39 +152,31 @@ mount -o subvol=@snapshots,$OPTS "$PART_ROOT" /mnt/.snapshots
 mount -o subvol=@var_log,$OPTS "$PART_ROOT" /mnt/var/log
 [ -n "$PART_EFI" ] && mount "$PART_EFI" /mnt/boot
 
-# === Установка системы
-pacstrap -K /mnt base base-devel linux-zen linux-firmware terminus-font zsh sudo networkmanager git grub btrfs-progs
+# --- Установка системы ---
+pacstrap -K /mnt base base-devel linux-zen linux-firmware terminus-font btrfs-progs zsh sudo git grub networkmanager
 
 genfstab -U /mnt >> /mnt/etc/fstab
 
-# === Настройка в chroot
+# --- Настройка в chroot ---
 arch-chroot /mnt /bin/bash <<EOF
 ln -sf /usr/share/zoneinfo/$TIMEZONE /etc/localtime
 hwclock --systohc
-
 echo "$SELECTED_LOCALE UTF-8" >> /etc/locale.gen
 locale-gen
 echo "LANG=$SELECTED_LOCALE" > /etc/locale.conf
 echo "FONT=ter-v16n" > /etc/vconsole.conf
-
 echo "$HOSTNAME" > /etc/hostname
-echo "127.0.0.1 localhost" >> /etc/hosts
+echo "127.0.0.1 localhost" > /etc/hosts
 echo "::1       localhost" >> /etc/hosts
 echo "127.0.1.1 $HOSTNAME.localdomain $HOSTNAME" >> /etc/hosts
-
 echo "root:$ROOT_PASS" | chpasswd
 useradd -m -G wheel -s /bin/zsh "$USERNAME"
 echo "$USERNAME:$USER_PASS" | chpasswd
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
-
 systemctl enable NetworkManager
-
-# ZSH + plugins
-echo "Настройка ZSH..."
 git clone https://github.com/ohmyzsh/ohmyzsh.git /home/$USERNAME/.oh-my-zsh
 git clone https://github.com/zsh-users/zsh-autosuggestions /home/$USERNAME/.oh-my-zsh/custom/plugins/zsh-autosuggestions
 git clone https://github.com/zsh-users/zsh-syntax-highlighting /home/$USERNAME/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
-
 cp /home/$USERNAME/.oh-my-zsh/templates/zshrc.zsh-template /home/$USERNAME/.zshrc
 sed -i 's/ZSH_THEME="robbyrussell"/ZSH_THEME="passion"/' /home/$USERNAME/.zshrc
 sed -i 's/plugins=(git)/plugins=(git zsh-autosuggestions zsh-syntax-highlighting)/' /home/$USERNAME/.zshrc
@@ -175,4 +184,4 @@ chown -R $USERNAME:$USERNAME /home/$USERNAME
 EOF
 
 umount -R /mnt
-echo -e "\n${GREEN}✅ Установка завершена. Перезагрузите систему.${RESET}"
+echo -e "${GREEN}✅ Установка завершена! Перезагрузите систему.${RESET}"
