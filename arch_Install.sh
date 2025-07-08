@@ -142,21 +142,26 @@ echo "127.0.1.1 $HOSTNAME.localdomain $HOSTNAME" >> /etc/hosts
 EOF
 
 # Set locale
-echo "${locale_choices}" | xargs -n1 -I{} echo "${LOCALE_LIST[$(({}-1))]}" >> /mnt/etc/locale.gen
+for choice in $locale_choices; do
+    echo "${LOCALE_LIST[$((choice-1))]}" >> /mnt/etc/locale.gen
+done
 arch-chroot /mnt locale-gen
-arch-chroot /mnt bash -c "echo LANG=$(echo ${LOCALE_LIST[0]} | cut -d' ' -f1) > /etc/locale.conf"
+
+# Устанавливаем первую выбранную локаль как основную
+first_choice=$(echo $locale_choices | awk '{print $1}')
+arch-chroot /mnt bash -c "echo LANG=$(echo ${LOCALE_LIST[$((first_choice-1))]} | cut -d' ' -f1) > /etc/locale.conf"
 
 # Set root password
 echo "root:$ROOT_PASSWORD" | arch-chroot /mnt chpasswd
 
 # Create user
-echo "${USERNAME}:$USER_PASSWORD" | arch-chroot /mnt chpasswd
 arch-chroot /mnt useradd -m -G wheel -s /bin/zsh $USERNAME
+echo "${USERNAME}:$USER_PASSWORD" | arch-chroot /mnt chpasswd
 arch-chroot /mnt sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
 # Bootloader
 if [[ "$PART_TABLE" == "gpt" ]]; then
-  arch-chroot /mnt bootctl install
+  arch-chroot /mnt bootctl --path=/boot install
   UUID=$(blkid -s UUID -o value $PART_ROOT)
   echo "default arch" > /mnt/boot/loader/loader.conf
   cat <<BOOT > /mnt/boot/loader/entries/arch.conf
@@ -206,7 +211,7 @@ cat <<XCONF > /mnt/home/$USERNAME/.Xresources
 *.color14:      #8ec07c
 *.color15:      #ebdbb2
 XCONF
-chown $USERNAME:$USERNAME /mnt/home/$USERNAME/.Xresources
+arch-chroot /mnt chown $USERNAME:$USERNAME /home/$USERNAME/.Xresources
 
 # Done
 echo -e "\n${GREEN}Installation complete! You may now reboot.${RESET}"
