@@ -30,30 +30,26 @@ fi
 # Установка более читаемого шрифта для консоли
 setfont ter-132n || true
 
-# --- Функции ---
+# --- ИСПРАВЛЕННЫЕ ФУНКЦИИ ---
 
-# ИСПРАВЛЕННАЯ функция для отображения опций и получения выбора
-choose_option() {
-    local -n options=$1
-    local prompt=$2
-    local list_output
+# Эта функция ТОЛЬКО отображает опции в столбцах
+display_options() {
+    local -n options_ref=$1
+    for i in "${!options_ref[@]}"; do
+        printf "%3d) %s\n" "$((i+1))" "${options_ref[$i]}"
+    done | column
+}
 
-    # Сначала генерируем и форматируем список в переменную
-    list_output=$(
-        for i in "${!options[@]}"; do
-            printf "%3d) %s\n" "$((i+1))" "${options[$i]}"
-        done | column
-    )
-    
-    # Затем выводим готовый список на экран
-    echo "$list_output"
-
-    # И только потом запрашиваем ввод
+# Эта функция ТОЛЬКО запрашивает ввод у пользователя
+prompt_for_choice() {
+    local -n options_ref=$1
+    local prompt_text=$2
     local choice
+
     while true; do
-        read -p "$prompt" choice
-        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#options[@]}" ]; then
-            echo "${options[$((choice-1))]}"
+        read -p "$prompt_text" choice
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#options_ref[@]}" ]; then
+            echo "${options_ref[$((choice-1))]}"
             return
         else
             echo -e "${RED}Invalid input. Try again.${RESET}"
@@ -65,23 +61,27 @@ choose_option() {
 select_timezone() {
     mapfile -t REGIONS < <(timedatectl list-timezones | cut -d'/' -f1 | sort -u | grep -v -e '^$' -e '^Etc$')
     echo -e "\n${GREEN}Select region:${RESET}"
-    SELECTED_REGION=$(choose_option REGIONS "Region (1-${#REGIONS[@]}): ")
+    display_options REGIONS
+    SELECTED_REGION=$(prompt_for_choice REGIONS "Region (1-${#REGIONS[@]}): ")
     
     mapfile -t ZONES < <(timedatectl list-timezones | grep "^$SELECTED_REGION/")
     echo -e "\n${GREEN}Select city/zone:${RESET}"
-    TIMEZONE=$(choose_option ZONES "Zone (1-${#ZONES[@]}): ")
+    display_options ZONES
+    TIMEZONE=$(prompt_for_choice ZONES "Zone (1-${#ZONES[@]}): ")
 }
 
 # --- Сбор данных от пользователя ---
 
 mapfile -t DISKS < <(lsblk -dno NAME,SIZE | awk '{print $1 " (" $2 ")"}')
 echo -e "\n${GREEN}Select target disk (all data will be erased):${RESET}"
-DISK_FULL=$(choose_option DISKS "Choice (1-${#DISKS[@]}): ")
+display_options DISKS
+DISK_FULL=$(prompt_for_choice DISKS "Choice (1-${#DISKS[@]}): ")
 DISK="/dev/$(echo $DISK_FULL | awk '{print $1}')"
 
 PARTS=("GPT" "MBR")
 echo -e "\n${GREEN}Select partition table:${RESET}"
-PART_TABLE=$(choose_option PARTS "Choice (1-${#PARTS[@]}): ")
+display_options PARTS
+PART_TABLE=$(prompt_for_choice PARTS "Choice (1-${#PARTS[@]}): ")
 PART_TABLE=${PART_TABLE,,}
 
 read -p "Hostname [arch]: " HOSTNAME
@@ -105,7 +105,8 @@ done
 
 LOCALES=("en_US.UTF-8" "ru_RU.UTF-8" "de_DE.UTF-8")
 echo -e "\n${GREEN}Select default locale:${RESET}"
-DEFAULT_LOCALE=$(choose_option LOCALES "Choice (1-${#LOCALES[@]}): ")
+display_options LOCALES
+DEFAULT_LOCALE=$(prompt_for_choice LOCALES "Choice (1-${#LOCALES[@]}): ")
 
 select_timezone
 
