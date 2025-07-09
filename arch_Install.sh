@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -eEuo pipefail
 
 # Цвета
 GREEN="\e[32m"
@@ -8,15 +8,14 @@ YELLOW="\e[33m"
 BLUE="\e[34m"
 RESET="\e[0m"
 
-# Приветствие
 clear
 echo -e "${YELLOW}"
 cat << "EOF"
-    _       _                      _             _             
-   /_\_   _(_)_ __  ___  ___ _ _ (_)_ __  ___  | |_ ___  _ __ 
-  / _ \| | | | '_ \/ __|/ _ \ ' \| | '  \/ -_) |  _/ _ \| '_ \
- /_/ \_\_, |_| .__/\__|\___/_||_|_|_|_|_\___|  \__\___/| .__/
-       |__/|_|                                      |_|   
+_       _                      _             _
+/_   () __  ___  ___ _ _ () __  ___  | |_ ___  _ __
+/ _ | | | | '_ / |/ _ \ ' | | '  / -) |  / _ | ' \
+// __, |_| ./_|___/||||||___|  __/| ./
+|__/||                                      ||
 EOF
 echo -e "${RESET}"
 echo -e "${YELLOW}Welcome! Installing Arch Linux with style...${RESET}"
@@ -36,13 +35,14 @@ for i in "${!DISKS[@]}"; do echo "$((i+1))) ${DISKS[$i]}"; done
 read -p "Choose disk number to install on: " disk_index
 DISK=$(echo ${DISKS[$((disk_index-1))]} | awk '{print $1}')
 
-# Тип таблицы
-echo -e "\nPartition type:" 
+# Тип таблицы разделов
+echo -e "\nPartition type:"
 echo "1) GPT (UEFI)"
 echo "2) MBR (BIOS)"
 read -p "Choose (1-2): " part_type
 [[ "$part_type" == "1" ]] && PART_TABLE="gpt" || PART_TABLE="mbr"
 
+# Ввод данных
 read -p "Enter hostname [archlinux]: " HOSTNAME
 HOSTNAME=${HOSTNAME:-archlinux}
 read -p "Enter username [user]: " USERNAME
@@ -66,40 +66,41 @@ done
 # Таймзона
 mapfile -t REGIONS < <(timedatectl list-timezones | cut -d'/' -f1 | sort -u | grep -v -e '^$' -e '^Etc$')
 echo -e "\nChoose region:"
-(for i in "${!REGIONS[@]}"; do printf "%3d) %-15s\n" "$((i+1))" "${REGIONS[$i]}"; done) | column
+for i in "${!REGIONS[@]}"; do printf "%3d) %-15s\n" "$((i+1))" "${REGIONS[$i]}"; done | column
 read -p "Region (1-${#REGIONS[@]}): " region_choice
-SELECTED_REGION="${REGIONS[$((region_choice-1))]}"
+SELECTED_REGION="${REGIONS[$((region_choice-1))]}",
 
 mapfile -t ZONES < <(timedatectl list-timezones | grep "^$SELECTED_REGION/")
 echo -e "\nChoose city:"
-(for i in "${!ZONES[@]}"; do printf "%3d) %-25s\n" "$((i+1))" "${ZONES[$i]}"; done) | column
+for i in "${!ZONES[@]}"; do printf "%3d) %-25s\n" "$((i+1))" "${ZONES[$i]}"; done | column
 read -p "City (1-${#ZONES[@]}): " zone_choice
-TIMEZONE="${ZONES[$((zone_choice-1))]}"
+TIMEZONE="${ZONES[$((zone_choice-1))]}",
 
 # Локали
 echo -e "\nChoose locales (space-separated):"
 LOCALE_LIST=("en_US.UTF-8 UTF-8" "ru_RU.UTF-8 UTF-8" "de_DE.UTF-8 UTF-8")
-(for i in "${!LOCALE_LIST[@]}"; do echo "$((i+1))) ${LOCALE_LIST[$i]}"; done)
+for i in "${!LOCALE_LIST[@]}"; do echo "$((i+1))) ${LOCALE_LIST[$i]}"; done
 read -p "Locales: " locale_choices
 
 # Разметка
 umount -R /mnt || true
-sgdisk --zap-all $DISK || true
+wipefs -a "$DISK"
+sgdisk --clear "$DISK"
 
 if [[ "$PART_TABLE" == "gpt" ]]; then
-    sgdisk -n 1:0:+550M -t 1:ef00 $DISK
-    sgdisk -n 2:0:0 -t 2:8300 $DISK
+    sgdisk -n 1:0:+550M -t 1:ef00 "$DISK"
+    sgdisk -n 2:0:0 -t 2:8300 "$DISK"
     PART_EFI="${DISK}1"; PART_ROOT="${DISK}2"
-    mkfs.fat -F32 $PART_EFI
+    mkfs.fat -F32 "$PART_EFI"
 else
-    parted -s $DISK mklabel msdos
-    parted -s $DISK mkpart primary ext4 1MiB 100%
-    parted -s $DISK set 1 boot on
+    parted -s "$DISK" mklabel msdos
+    parted -s "$DISK" mkpart primary ext4 1MiB 100%
+    parted -s "$DISK" set 1 boot on
     PART_ROOT="${DISK}1"
 fi
 
-mkfs.btrfs -f -L ArchLinux $PART_ROOT
-mount -t btrfs $PART_ROOT /mnt
+mkfs.btrfs -f -L ArchLinux "$PART_ROOT"
+mount -t btrfs "$PART_ROOT" /mnt
 btrfs subvolume create /mnt/@
 btrfs subvolume create /mnt/@home
 btrfs subvolume create /mnt/@snapshots
@@ -107,19 +108,23 @@ btrfs subvolume create /mnt/@var_log
 umount /mnt
 
 BTRFS_OPTS="subvol=@,noatime,compress=zstd:2,ssd,discard=async,space_cache=v2"
-mount -t btrfs -o $BTRFS_OPTS $PART_ROOT /mnt
+mount -t btrfs -o "$BTRFS_OPTS" "$PART_ROOT" /mnt
 mkdir -p /mnt/{boot,home,.snapshots,var/log}
-mount -t btrfs -o subvol=@home,noatime,compress=zstd:2,ssd,discard=async,space_cache=v2 $PART_ROOT /mnt/home
-mount -t btrfs -o subvol=@snapshots,noatime,compress=zstd:2,ssd,discard=async,space_cache=v2 $PART_ROOT /mnt/.snapshots
-mount -t btrfs -o subvol=@var_log,noatime,compress=zstd:2,ssd,discard=async,space_cache=v2 $PART_ROOT /mnt/var/log
-[[ -n "$PART_EFI" ]] && mount $PART_EFI /mnt/boot
+mount -t btrfs -o subvol=@home,noatime,compress=zstd:2,ssd,discard=async,space_cache=v2 "$PART_ROOT" /mnt/home
+mount -t btrfs -o subvol=@snapshots,noatime,compress=zstd:2,ssd,discard=async,space_cache=v2 "$PART_ROOT" /mnt/.snapshots
+mount -t btrfs -o subvol=@var_log,noatime,compress=zstd:2,ssd,discard=async,space_cache=v2 "$PART_ROOT" /mnt/var/log
+[[ -n "$PART_EFI" ]] && mount "$PART_EFI" /mnt/boot
+
+# Обновляем зеркала
+reflector --latest 5 --sort rate --save /etc/pacman.d/mirrorlist
 
 # Установка базовой системы
 pacstrap -K /mnt base base-devel linux linux-firmware btrfs-progs \
 networkmanager zsh git grub sudo terminus-font xterm pcmanfm ranger \
-feh xorg xorg-xinit mesa xf86-video-vesa bspwm polybar
+feh xorg xorg-xinit mesa xf86-video-vesa bspwm polybar intel-ucode efibootmgr
 
-genfstab -U /mnt >> /mnt/etc/fstab
+# Генерация fstab
+genfstab -U -p /mnt >> /mnt/etc/fstab
 
 # Chroot
 arch-chroot /mnt /bin/bash <<EOF
@@ -145,47 +150,44 @@ arch-chroot /mnt bash -c "echo LANG=$(echo ${LOCALE_LIST[$((first_choice-1))]} |
 
 # root и пользователь
 echo "root:$ROOT_PASSWORD" | arch-chroot /mnt chpasswd
-arch-chroot /mnt useradd -m -G wheel,video,audio -s /bin/zsh $USERNAME
+arch-chroot /mnt useradd -m -G wheel,video,audio -s /bin/zsh "$USERNAME"
 echo "$USERNAME:$USER_PASSWORD" | arch-chroot /mnt chpasswd
 arch-chroot /mnt sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
 # Bootloader
 if [[ "$PART_TABLE" == "gpt" ]]; then
-  arch-chroot /mnt bootctl --path=/boot install
-  UUID=$(blkid -s UUID -o value $PART_ROOT)
-  echo "default arch" > /mnt/boot/loader/loader.conf
-  cat <<BOOT > /mnt/boot/loader/entries/arch.conf
+    arch-chroot /mnt bootctl --path=/boot install
+    UUID=$(blkid -s UUID -o value "$PART_ROOT")
+    echo "default arch" > /mnt/boot/loader/loader.conf
+    cat <<BOOT > /mnt/boot/loader/entries/arch.conf
 title   Arch Linux
 linux   /vmlinuz-linux
 initrd  /initramfs-linux.img
 options root=UUID=$UUID rootflags=subvol=@ rw
 BOOT
+    arch-chroot /mnt mkinitcpio -P
 else
-  arch-chroot /mnt grub-install --target=i386-pc $DISK
-  arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg
+    arch-chroot /mnt grub-install --target=i386-pc "$DISK"
+    arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg
 fi
 
 # Enable services
 arch-chroot /mnt systemctl enable NetworkManager
 
 # ZSH и yay
-arch-chroot /mnt su - $USERNAME -c "git clone https://github.com/ohmyzsh/ohmyzsh.git ~/.oh-my-zsh"
-arch-chroot /mnt su - $USERNAME -c "git clone https://github.com/zsh-users/zsh-autosuggestions ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
-arch-chroot /mnt su - $USERNAME -c "git clone https://github.com/zsh-users/zsh-syntax-highlighting ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
-arch-chroot /mnt su - $USERNAME -c "cp ~/.oh-my-zsh/templates/zshrc.zsh-template ~/.zshrc"
-arch-chroot /mnt su - $USERNAME -c "sed -i 's/ZSH_THEME=\"robbyrussell\"/ZSH_THEME=\"passion\"/' ~/.zshrc"
-arch-chroot /mnt su - $USERNAME -c "sed -i 's/plugins=(git)/plugins=(git zsh-autosuggestions zsh-syntax-highlighting)/' ~/.zshrc"
-
-# Разрешение sudo без пароля для yay
-echo "$USERNAME ALL=(ALL) NOPASSWD: /usr/bin/pacman" > /mnt/etc/sudoers.d/$USERNAME
-chmod 440 /mnt/etc/sudoers.d/$USERNAME
+arch-chroot /mnt su - "$USERNAME" -c "git clone https://github.com/ohmyzsh/ohmyzsh.git  ~/.oh-my-zsh"
+arch-chroot /mnt su - "$USERNAME" -c "git clone https://github.com/zsh-users/zsh-autosuggestions  ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
+arch-chroot /mnt su - "$USERNAME" -c "git clone https://github.com/zsh-users/zsh-syntax-highlighting  ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
+arch-chroot /mnt su - "$USERNAME" -c "cp ~/.oh-my-zsh/templates/zshrc.zsh-template ~/.zshrc"
+arch-chroot /mnt su - "$USERNAME" -c "sed -i 's/ZSH_THEME=\"robbyrussell\"/ZSH_THEME=\"passion\"/' ~/.zshrc"
+arch-chroot /mnt su - "$USERNAME" -c "sed -i 's/plugins=(git)/plugins=(git zsh-autosuggestions zsh-syntax-highlighting)/' ~/.zshrc"
 
 # Установка yay
-arch-chroot /mnt pacman -S --noconfirm go
-arch-chroot /mnt su - $USERNAME -c "cd ~ && git clone https://aur.archlinux.org/yay.git && cd yay && makepkg -si --noconfirm"
+arch-chroot /mnt pacman -Sy --noconfirm go
+arch-chroot /mnt su - "$USERNAME" -c "cd ~ && git clone https://aur.archlinux.org/yay.git  && cd yay && makepkg -si --noconfirm"
 
-# Xresources Gruvbox
-cat <<XCONF > /mnt/home/$USERNAME/.Xresources
+# Настройка Xresources
+cat <<XCONF > "/mnt/home/$USERNAME/.Xresources"
 *.foreground:   #ebdbb2
 *.background:   #282828
 *.color0:       #282828
@@ -205,7 +207,7 @@ cat <<XCONF > /mnt/home/$USERNAME/.Xresources
 *.color14:      #8ec07c
 *.color15:      #ebdbb2
 XCONF
-arch-chroot /mnt chown $USERNAME:$USERNAME /home/$USERNAME/.Xresources
+arch-chroot /mnt chown "$USERNAME":"$USERNAME" "/home/$USERNAME/.Xresources"
 
 # Завершение
 echo -e "\n${GREEN}Installation complete! You may now reboot.${RESET}"
