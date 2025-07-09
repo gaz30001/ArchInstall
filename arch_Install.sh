@@ -68,13 +68,35 @@ mapfile -t REGIONS < <(timedatectl list-timezones | cut -d'/' -f1 | sort -u | gr
 echo -e "\nChoose region:"
 for i in "${!REGIONS[@]}"; do printf "%3d) %-15s\n" "$((i+1))" "${REGIONS[$i]}"; done | column
 read -p "Region (1-${#REGIONS[@]}): " region_choice
-SELECTED_REGION="${REGIONS[$((region_choice-1))]}",
 
-mapfile -t ZONES < <(timedatectl list-timezones | grep "^$SELECTED_REGION/")
+# Проверка корректности ввода региона
+if ! [[ "$region_choice" =~ ^[0-9]+$ ]] || (( region_choice < 1 || region_choice > ${#REGIONS[@]} )); then
+    echo -e "${RED}Invalid region choice.${RESET}"
+    exit 1
+fi
+
+SELECTED_REGION="${REGIONS[$((region_choice-1))]}/"
+
+# Получаем список городов для выбранного региона
+mapfile -t ZONES < <(timedatectl list-timezones | grep "^$SELECTED_REGION")
+
+# Проверяем, есть ли города в регионе
+if [ ${#ZONES[@]} -eq 0 ]; then
+    echo -e "${RED}No cities found for the selected region.${RESET}"
+    exit 1
+fi
+
 echo -e "\nChoose city:"
 for i in "${!ZONES[@]}"; do printf "%3d) %-25s\n" "$((i+1))" "${ZONES[$i]}"; done | column
 read -p "City (1-${#ZONES[@]}): " zone_choice
-TIMEZONE="${ZONES[$((zone_choice-1))]}",
+
+# Проверка корректности ввода города
+if ! [[ "$zone_choice" =~ ^[0-9]+$ ]] || (( zone_choice < 1 || zone_choice > ${#ZONES[@]} )); then
+    echo -e "${RED}Invalid city choice.${RESET}"
+    exit 1
+fi
+
+TIMEZONE="${ZONES[$((zone_choice-1))]}"
 
 # Локали
 echo -e "\nChoose locales (space-separated):"
