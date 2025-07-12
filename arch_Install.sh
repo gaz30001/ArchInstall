@@ -181,6 +181,8 @@ echo "exec bspwm" >> /mnt/etc/X11/xinit/xinitrc
 arch-chroot /mnt systemctl enable NetworkManager
 
 # Oh-my-zsh, yay, gruvbox setup
+# Установка go для сборки yay
+arch-chroot /mnt pacman -S --noconfirm go
 arch-chroot /mnt su - $USERNAME -c "git clone https://aur.archlinux.org/yay.git ~/yay && cd ~/yay && makepkg -si --noconfirm"
 arch-chroot /mnt su - $USERNAME -c "mkdir -p ~/.config/polybar && mkdir -p ~/.config/bspwm"
 
