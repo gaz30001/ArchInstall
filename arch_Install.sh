@@ -135,8 +135,15 @@ mount -t btrfs -o subvol=@snapshots,noatime,compress=zstd:2,ssd,discard=async,sp
 mount -t btrfs -o subvol=@var_log,noatime,compress=zstd:2,ssd,discard=async,space_cache=v2 $PART_ROOT /mnt/var/log
 [[ -n "$PART_EFI" ]] && mount $PART_EFI /mnt/boot
 
+#-------------------- Обновление зеркал --------------------
+
+echo -e "\n${GREEN}Updating mirror list for faster downloads...${RESET}"
+pacman -Sy --noconfirm reflector
+reflector --verbose --country Russia,Germany --sort rate -n 10 --save /etc/pacman.d/mirrorlist
+
 #-------------------- Установка системы --------------------
 
+echo -e "\n${GREEN}Installing base system (pacstrap)... This may take a while.${RESET}"
 pacstrap -K /mnt base base-devel linux-zen linux-firmware btrfs-progs \
 networkmanager zsh git grub sudo terminus-font xterm pcmanfm ranger \
 feh xorg xorg-xinit mesa xf86-video-vesa bspwm polybar neovim go
