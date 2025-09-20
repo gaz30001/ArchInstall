@@ -156,7 +156,7 @@ echo -e "\n${GREEN}Installing base system (pacstrap)... This may take a while.${
 # - Удалены: linux-zen, btrfs-progs, xf86-video-vesa, bspwm, polybar, go
 pacstrap -K /mnt base base-devel linux-lts linux-firmware \
 networkmanager dhcpcd zsh git sudo terminus-font xterm pcmanfm ranger feh \
-xorg xorg-xinit mesa xf86-video-ati openbox tint2 efibootmgr
+xorg xorg-xinit mesa xf86-video-ati openbox tint2 efibootmgr grub
 
 genfstab -U /mnt >> /mnt/etc/fstab
 # Убедимся, что swap есть в fstab
@@ -206,7 +206,7 @@ options root=UUID=$UUID rw
 BOOT
 else
     # Добавляем grub в pacstrap, если его там еще нет
-    pacman -S --noconfirm grub
+#    pacman -S --noconfirm grub
     arch-chroot /mnt grub-install --target=i386-pc $DISK
     arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg
 fi
