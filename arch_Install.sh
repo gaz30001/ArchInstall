@@ -217,6 +217,8 @@ arch-chroot /mnt systemctl enable NetworkManager
 
 #-------------------- ZSH и yay --------------------
 
+#-------------------- ZSH и yay (исправленная версия) --------------------
+
 arch-chroot /mnt su - $USERNAME -c "git clone https://github.com/ohmyzsh/ohmyzsh.git ~/.oh-my-zsh"
 arch-chroot /mnt su - $USERNAME -c "git clone https://github.com/zsh-users/zsh-autosuggestions ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
 arch-chroot /mnt su - $USERNAME -c "git clone https://github.com/zsh-users/zsh-syntax-highlighting ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
@@ -224,8 +226,29 @@ arch-chroot /mnt su - $USERNAME -c "cp ~/.oh-my-zsh/templates/zshrc.zsh-template
 arch-chroot /mnt su - $USERNAME -c "sed -i 's/ZSH_THEME=\"robbyrussell\"/ZSH_THEME=\"passion\"/' ~/.zshrc"
 arch-chroot /mnt su - $USERNAME -c "sed -i 's/plugins=(git)/plugins=(git zsh-autosuggestions zsh-syntax-highlighting)/' ~/.zshrc"
 
-# Установка yay (без небезопасных правил sudo)
-arch-chroot /mnt su - $USERNAME -c "cd ~ && git clone https://aur.archlinux.org/yay.git && cd yay && makepkg -si --noconfirm"
+# --- НАЧАЛО ИСПРАВЛЕНИЯ ---
+
+# Временно даем пользователю права на sudo без пароля для установки yay
+echo -e "\n${YELLOW}Temporarily granting sudo rights for yay installation...${RESET}"
+cat <<SUDO > /mnt/etc/sudoers.d/10-temp-user-for-yay
+# This file is temporary and will be removed after yay installation
+$USERNAME ALL=(ALL) NOPASSWD: ALL
+SUDO
+chmod 440 /mnt/etc/sudoers.d/10-temp-user-for-yay
+
+# Установка yay
+# -s: установить зависимости (go)
+# -r: удалить зависимости после сборки
+# -i: установить пакет
+echo -e "\n${GREEN}Installing yay for user $USERNAME...${RESET}"
+arch-chroot /mnt su - $USERNAME -c "cd ~ && git clone https://aur.archlinux.org/yay.git && cd yay && makepkg -sri --noconfirm"
+
+# Удаляем временные права sudo, они больше не нужны
+echo -e "\n${YELLOW}Revoking temporary sudo rights...${RESET}"
+rm /mnt/etc/sudoers.d/10-temp-user-for-yay
+
+# --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+
 
 #-------------------- Настройка графической сессии (Openbox) --------------------
 
